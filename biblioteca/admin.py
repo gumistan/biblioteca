@@ -56,6 +56,7 @@ class PrestamoAdmin(admin.ModelAdmin):
     search_fields=("estudiante__nombre", "estudiante__codigo", "copia__codigo", "copia__libro__titulo", "copia__libro__isbn" )
     list_filter=("fecha_prestamo", "fecha_devolucion")
     readonly_fields=("fecha_prestamo", )
+    autocomplete_fields = ("copia", "estudiante")
     actions=[marcar_devueltos]
     list_select_related =("copia__libro", "estudiante")
 
