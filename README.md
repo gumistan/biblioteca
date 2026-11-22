@@ -18,6 +18,108 @@ Actividad de Programación Web, UFPS.
 
 ---
 
+## 5. Modelo de datos
+
+```mermaid
+erDiagram
+    CATEGORIA ||--o{ LIBRO : clasifica
+    LIBRO }o--o{ AUTOR : escrito_por
+    LIBRO ||--o{ COPIA : tiene
+    COPIA ||--o{ PRESTAMO : se_presta_en
+    ESTUDIANTE ||--o{ PRESTAMO : solicita
+
+    CATEGORIA {
+        int id PK
+        string nombre UK
+    }
+    AUTOR {
+        int id PK
+        string nombre
+    }
+    LIBRO {
+        int id PK
+        string titulo
+        string idioma
+        int anio_publicacion
+        string isbn UK
+        int categoria_id FK
+    }
+    COPIA {
+        int id PK
+        string codigo UK
+        string condicion
+        int libro_id FK
+    }
+    ESTUDIANTE {
+        int id PK
+        string codigo UK
+        string nombre
+        string correo UK
+    }
+    PRESTAMO {
+        int id PK
+        int copia_id FK
+        int estudiante_id FK
+        date fecha_prestamo
+        date fecha_limite
+        date fecha_devolucion "opcional"
+    }
+```
+
+### Relaciones
+
+- **Categoría → Libro (uno a muchos):** una categoría agrupa muchos libros y cada libro tiene una sola categoría. Usa `PROTECT`: no se puede borrar una categoría que tenga libros.
+- **Libro ↔ Autor (muchos a muchos):** un libro puede tener varios autores y un autor varios libros. Django crea solo la tabla intermedia (`Libro_autores`).
+- **Libro → Copia (uno a muchos):** de un mismo libro hay varias copias físicas, cada una con su código de inventario y su condición. Usa `PROTECT`.
+- **Copia → Préstamo (uno a muchos):** una copia se presta muchas veces a lo largo del tiempo. Usa `PROTECT`.
+- **Estudiante → Préstamo (uno a muchos):** un estudiante hace muchos préstamos y se conserva su historial, por eso se usa `PROTECT`.
+
+Un estudiante pide prestada una **copia** y no el libro en abstracto, por eso el préstamo apunta a `Copia` y no a `Libro`.
+
+### La regla de la copia prestada
+
+> "Una copia no puede estar prestada a dos personas al mismo tiempo."
+
+Elegimos una **restricción en la base de datos** (`UniqueConstraint` con `condition`) y no una validación con `clean()`:
+
+```python
+models.UniqueConstraint(
+    fields=["copia"],
+    condition=models.Q(fecha_devolucion__isnull=True),
+    name="una_copia_un_prestamo_activo",
+    violation_error_message="Esta copia ya está prestada y no ha sido devuelta.",
+)
+```
+
+La unicidad de `copia` aplica solo a los préstamos **sin fecha de devolución** (los activos). Así una copia puede prestarse muchas veces a lo largo del tiempo, pero nunca a dos personas a la vez.
+
+**Por qué la elegimos:** la base de datos la hace cumplir sin importar desde dónde se guarde el dato (admin, shell, scripts). `clean()` solo se ejecuta desde formularios y el admin, o si se llama a `full_clean()` a mano; con `.save()` en el shell se salta. Además, `clean()` revisa y guarda en dos pasos, por lo que dos guardados simultáneos podrían pasar la revisión, mientras que la base de datos revisa y guarda en un solo paso. Una desventaja es que la regla queda en la base de datos y no en el código Python.
+
+**Prueba de que funciona:**
+
+**En el shell.** `UFPS-006` ya tiene un préstamo activo (de Marta Gómez). Se intentó prestarla a otro estudiante:
+
+```python
+from datetime import date, timedelta
+
+copia = Copia.objects.get(codigo="UFPS-006")
+estudiante = Estudiante.objects.get(codigo="1152004")
+Prestamo.objects.create(copia=copia, estudiante=estudiante, fecha_limite=date.today() + timedelta(days=7))
+```
+
+- **Predicción:** falla con un `IntegrityError` y no se crea el préstamo.
+- **Resultado:** falló, como se esperaba:
+
+```
+django.db.utils.IntegrityError: UNIQUE constraint failed: biblioteca_prestamo.copia_id
+```
+
+**En el admin.** Al intentar crear un préstamo de una copia que ya está prestada, el formulario no se guarda y muestra: *"Por favor, corrija el siguiente error. Esta copia ya está prestada y no ha sido devuelta."*
+
+**Diferencia entre los dos lugares:** en el admin Django revisa la restricción antes de guardar y muestra nuestro `violation_error_message`; en el shell no hay formulario, así que quien rechaza el dato es la base de datos con un `IntegrityError`. En ambos casos el préstamo duplicado no se crea.
+
+---
+
 ## 6. Panel de administración
 
 Cada personalización responde a una necesidad de la bibliotecaria:
