@@ -166,3 +166,68 @@ Libro.objects.get(titulo__icontains="abiertas").autores.all()
 - **Explicación:** Django eliminó 1 autor y 2 vínculos de la tabla intermedia `Libro_autores`. Ningún libro se eliminó porque un `ManyToManyField` no usa `on_delete`: no hay una clave foránea en el libro que quede apuntando a un autor inexistente, así que solo se borra el vínculo. Si el autor estuviera en una `ForeignKey` desde `Libro`, ahí sí dependería del `on_delete` elegido.
 
 ---
+
+## 8. Optimización de consultas
+
+El problema N+1: al recorrer una lista y acceder en cada vuelta a un objeto relacionado, Django hace una consulta para la lista y una más por cada elemento.
+
+### Caso 1. Préstamos con estudiante y libro (`select_related`)
+
+Antes:
+
+```python
+with CaptureQueriesContext(connection) as ctx:
+    for p in Prestamo.objects.all():
+        print(p.estudiante.nombre, p.copia.libro.titulo)
+print(len(ctx), "consultas")
+```
+
+Después:
+
+```python
+with CaptureQueriesContext(connection) as ctx:
+    for p in Prestamo.objects.select_related("estudiante", "copia__libro"):
+        print(p.estudiante.nombre, p.copia.libro.titulo)
+print(len(ctx), "consultas")
+```
+
+El préstamo no apunta directamente al libro, sino a la copia, y la copia al libro. Por eso hay tres consultas por préstamo (estudiante, copia y libro), además de la consulta inicial: con 7 préstamos, `1 + 3 × 7 = 22`. La predicción inicial fue 21 porque olvidamos contar la consulta que trae la lista de préstamos.
+
+### Caso 2. Libros con sus autores (`prefetch_related`)
+
+Antes:
+
+```python
+with CaptureQueriesContext(connection) as ctx:
+    for l in Libro.objects.all():
+        print(l.titulo, [a.nombre for a in l.autores.all()])
+print(len(ctx), "consultas")
+```
+
+Después:
+
+```python
+with CaptureQueriesContext(connection) as ctx:
+    for l in Libro.objects.prefetch_related("autores"):
+        print(l.titulo, [a.nombre for a in l.autores.all()])
+print(len(ctx), "consultas")
+```
+
+Antes se hace una consulta por libro (`1 + 7 = 8`). Con `prefetch_related` son siempre 2: una para los libros y otra para los autores de todos ellos, que Django une en Python. La predicción inicial fue 1, y falló porque `prefetch_related` hace una consulta aparte para la relación en lugar de un JOIN.
+
+### Tabla de resultados
+
+| Consulta | Predicción | Antes | Después |
+|---|---|---|---|
+| Préstamos con estudiante y libro | 21 | 22 | 1 |
+| Libros con sus autores | 8 | 8 | 2 |
+
+### ¿Por qué `select_related` no sirve para libros y autores?
+
+`select_related` funciona con relaciones que dan **un solo objeto** (una `ForeignKey`), porque une las tablas con un JOIN y cada fila trae un único objeto relacionado. Entre libros y autores la relación es de muchos a muchos: un libro tiene varios autores y un autor puede serlo de varios libros, y un JOIN repetiría el libro una vez por autor. Por eso se usa `prefetch_related`, que hace una consulta de libros y otra de autores y las une en Python.
+
+### Optimización en el admin
+
+Se aplicó la misma idea en el panel: `list_select_related` en las listas de préstamos (`copia__libro`, `estudiante`), copias (`libro`) y libros (`categoria`). Para la columna de autores de la lista de libros, que es de muchos a muchos, se sobrescribió `get_queryset` con `prefetch_related("autores")`, porque no existe un atajo equivalente.
+
+---
