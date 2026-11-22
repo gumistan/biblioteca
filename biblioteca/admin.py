@@ -46,7 +46,7 @@ class EstudianteAdmin(admin.ModelAdmin):
  
 @admin.action(description="Marcar préstamos como devueltos")
 def marcar_devueltos(modeladmin, request, queryset):
-    queryset.update(fecha_devolucion__isnull=True).update(
+    queryset.filter(fecha_devolucion__isnull=True).update(
         fecha_devolucion=timezone.localdate()
     )
 
