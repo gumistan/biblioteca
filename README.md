@@ -18,6 +18,68 @@ Actividad de Programación Web, UFPS.
 
 ---
 
+## 3. Instalación y ejecución
+
+1. Clonar el repositorio:
+   ```
+   git clone URL_DEL_REPOSITORIO
+   cd biblioteca-ufps
+   ```
+2. Crear y activar el entorno virtual.
+
+   Windows:
+   ```
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+   Mac o Linux:
+   ```
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+3. Instalar las dependencias:
+   ```
+   pip install -r requirements.txt
+   ```
+4. Crear las tablas:
+   ```
+   python manage.py migrate
+   ```
+5. Crear un superusuario (elige tu propio usuario y contraseña):
+   ```
+   python manage.py createsuperuser
+   ```
+6. (Opcional) Cargar datos de prueba:
+   ```
+   python cargar_datos.py
+   ```
+7. Arrancar el servidor y entrar a `http://127.0.0.1:8000/admin`:
+   ```
+   python manage.py runserver
+   ```
+
+El archivo `db.sqlite3` no se sube al repositorio, así que quien clone el proyecto parte de una base vacía y debe crear su propio superusuario.
+
+---
+
+## 4. Estructura del proyecto
+
+```
+biblioteca-ufps/
+├── config/             Configuración del proyecto (settings.py, urls.py)
+├── biblioteca/         La app
+│   ├── models.py       Los seis modelos y la restricción de préstamo activo
+│   ├── admin.py        Personalización del panel de administración
+│   └── migrations/     Historial de cambios de la base de datos
+├── cargar_datos.py     Script que crea los datos de prueba de la fase 5
+├── manage.py           Punto de entrada para los comandos de Django
+├── requirements.txt    Librerías necesarias
+├── .gitignore          Excluye .venv, __pycache__ y db.sqlite3
+└── README.md
+```
+
+---
+
 ## 5. Modelo de datos
 
 ```mermaid
@@ -333,3 +395,45 @@ Antes se hace una consulta por libro (`1 + 7 = 8`). Con `prefetch_related` son s
 Se aplicó la misma idea en el panel: `list_select_related` en las listas de préstamos (`copia__libro`, `estudiante`), copias (`libro`) y libros (`categoria`). Para la columna de autores de la lista de libros, que es de muchos a muchos, se sobrescribió `get_queryset` con `prefetch_related("autores")`, porque no existe un atajo equivalente.
 
 ---
+
+## 9. Uso de inteligencia artificial
+
+Usamos **Claude** (Anthropic) como apoyo durante toda la actividad.
+
+**Qué le pedimos:**
+- Explicaciones de conceptos (constraints, `clean()`, `__str__`, N+1, `select_related` y `prefetch_related`, lookups).
+- Revisión de nuestro `models.py` y `admin.py` contra los requisitos de la actividad.
+- Un script para cargar los datos de prueba (`cargar_datos.py`), que leímos completo antes de ejecutarlo.
+- Un borrador del diagrama Mermaid a partir de nuestro `models.py`.
+- Orientación para organizar este README.
+
+**Qué tuvimos que corregir o verificar:**
+- Las consultas del ORM las escribimos nosotras y las ejecutamos en el shell, con nuestra propia predicción antes de ejecutar. Cuando una predicción de la IA no coincidió con el resultado, nos quedamos con el resultado real.
+- La IA afirmó que cada estudiante tenía como máximo un préstamo activo, y era falso: Marta tiene dos. Lo notamos al leer el script y comparar con los datos.
+- La IA predijo que la consulta del reto 4 devolvería también las copias nunca prestadas, y no fue así. Nos dimos cuenta al comparar el resultado con la predicción, y esto nos llevó a revisar la consulta.
+- El script de datos asumía nombres de carpetas y de modelos; verificamos que coincidieran con los de nuestro proyecto.
+- **Diagrama:** lo revisamos contra el código con la lista de la actividad (modelos completos, sentido de cada `ForeignKey`, `ManyToManyField` como una sola línea, y `fecha_devolucion` como único campo opcional) y **no encontramos errores**.
+
+---
+
+## 10. Equipo y reflexión
+
+**Integrantes:**
+
+- Yulian Andrés Ortega Machado
+- Julián Andrés Izquierdo Gallardo
+- María José Osorio Ovallos
+
+### ¿Qué parte de su diseño cambió después de escribir las primeras consultas, y por qué?
+
+Los modelos no cambiaron, pero ajustamos el admin al ver cómo se comportaban las consultas: agregamos `list_select_related` en las listas de préstamos, copias y libros para evitar el N+1, y una columna de autores en la lista de libros para que se entendiera mejor cada registro. Las consultas también nos corrigieron ideas: la del reto 5 traía estudiantes sin préstamos por culpa del JOIN, y el reto 10 nos mostró que borrar un autor deja libros sin autores, porque un muchos a muchos no usa `on_delete`.
+
+### ¿En qué se equivocó el agente con el diagrama y cómo lo notaron?
+
+En el diagrama no encontramos errores: están los seis modelos, las cardinalidades van en el sentido correcto, el muchos a muchos es una sola línea y `fecha_devolucion` es el único campo opcional. Lo comprobamos comparando el diagrama con `models.py`. Donde sí se equivocó el agente fue en otras partes del trabajo, descritas en la sección 9.
+
+### ¿Qué decisión defenderían ante otro grupo y cuál cambiarían?
+
+**Defenderíamos** la restricción en la base de datos para la regla de la copia prestada, porque protege el dato desde cualquier punto de entrada, y las optimizaciones del N+1, que medimos con números (22 → 1 y 8 → 2 consultas).
+
+**Cambiaríamos**, si empezáramos de nuevo, detalles del modelo: `Autor.nombre` no es único y se podría crear dos veces el mismo autor; un libro puede quedar sin autores y nada lo impide; y `fecha_limite` se escribe a mano cuando podría calcularse por defecto a partir de la fecha del préstamo. En el admin, también mostraríamos los libros de cada autor.
