@@ -22,8 +22,8 @@ Actividad de Programación Web, UFPS.
 
 1. Clonar el repositorio:
    ```
-   git clone URL_DEL_REPOSITORIO
-   cd biblioteca-ufps
+   git clone https://github.com/gumistan/biblioteca.git
+   cd biblioteca
    ```
 2. Crear y activar el entorno virtual.
 
@@ -65,7 +65,7 @@ El archivo `db.sqlite3` no se sube al repositorio, así que quien clone el proye
 ## 4. Estructura del proyecto
 
 ```
-biblioteca-ufps/
+biblioteca/
 ├── config/             Configuración del proyecto (settings.py, urls.py)
 ├── biblioteca/         La app
 │   ├── models.py       Los seis modelos y la restricción de préstamo activo
